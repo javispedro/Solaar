@@ -1487,6 +1487,12 @@ def process_notification(device, notification: HIDPPNotification, feature) -> No
             if notification.data[4] <= 0x01:  # when wheel starts, zero out last movement
                 thumb_wheel_displacement = 0
             thumb_wheel_displacement += signed(notification.data[0:2])
+        elif feature == SupportedFeature.CHANGE_HOST:
+            # notification.data[0] is current channel, notification.data[1] is new channel
+            if notification.data[1] <= 2: # only have CONTROL keys for up to channel 2 (i.e. 3 channels total).
+                host = notification.data[1] + 1
+                key_down = CONTROL["Host_Switch_Channel_" + str(host)]
+                logger.debug("mapping change host notification into key %s", key_down)
 
     GLib.idle_add(evaluate_rules, feature, notification, device)
 
