@@ -1383,6 +1383,106 @@ class Later(Action):
         data.insert(0, self.delay)
         return {"Later": data}
 
+### This action switches all the "following" devices of the lead device, usually the device
+### causing the event to the same channel that the lead device is switching to.
+class EasySwitch(Action):
+    def __init__(self, args, warn=True):
+        pass
+
+    def __str__(self):
+        return f"EasySwitch : []"
+
+    def hash_serial(self, data: bytes) -> int:
+        h = 0x00
+        for b in data:
+            x = h ^ b
+            h = ((x << 3) | (x >> 5)) & 0xFF
+        return h
+
+    def hash_device(self, dev) -> int:
+        serial = str(int(dev.unitId, 16)).encode('ascii')
+        return self.hash_serial(serial)
+
+    ### Figure out which channel we are switching to. Use the name of the last key pressed...
+    def get_new_channel(self):
+        global key_down
+        if key_down is CONTROL["Host_Switch_Channel_1"]:
+            return 0
+        elif key_down is CONTROL["Host_Switch_Channel_2"]:
+            return 1
+        elif key_down is CONTROL["Host_Switch_Channel_3"]:
+            return 2
+        else:
+            return None
+
+    def get_host_name(self, value: NamedInt) -> str:
+        # To get the host name, remove the X: prefix (the channel number) from the choice
+        return value.name[2:]
+
+    ### For a following device, find out which target we should switch to,
+    ### based on comparing the hostname on each available channel
+    ### to the one we're supposed to be switch to.
+    def find_target_channel(self, choices, target_host):
+        target_host_name = self.get_host_name(target_host)
+        for host in choices:
+            if self.get_host_name(host) == target_host_name:
+                return host
+        return None
+
+    def evaluate(self, feature, notification: HIDPPNotification, src_device, last_result):
+        # TBD Should this take args, like lead device, target host, etc?
+        lead_dev = src_device
+        lead_hash = self.hash_device(lead_dev)
+
+        # Need change-host feature to get hostname lead device is switching to
+        lead_host_setting = lead_dev.find_setting("change-host")
+        if lead_host_setting is None:
+            logger.warning("lead device %s does not support change host", lead_dev.name)
+            return
+
+        # Guess new host the lead device is switching to
+        lead_new_channel = self.get_new_channel()
+        if lead_new_channel is None:
+            logger.warning("can't figure out which channel is lead device switching to")
+            return
+        target_host = lead_host_setting._validator.choices[lead_new_channel]
+        logger.info("EasySwitch action: switch all devices that follow lead device %s (hash %s) to target host %s", lead_dev.name, lead_hash, target_host)
+
+        # Okey, iterate over all (online) devices and find which ones are following this one
+        for follow_dev in lead_dev.instances:
+            if not follow_dev.online:
+                continue
+            if follow_dev is lead_dev:
+                continue
+            host_setting = follow_dev.find_setting("change-host")
+            cookie_setting = follow_dev.find_setting("change-host-cookie")
+            if host_setting is None or cookie_setting is None:
+                continue
+            cur_host = host_setting.read()
+            cur_cookie = cookie_setting.read_key(cur_host)
+            logger.debug("Device %s current-host %s current-cookie %s", follow_dev.name, cur_host, cur_cookie)
+            if cur_cookie == lead_hash:
+                # This is a follower. Need to switch this device.
+                # Figure out to which channel to switch to first.
+                new_channel = self.find_target_channel(host_setting._validator.choices, target_host)
+                if new_channel is None:
+                    logger.warning("follow device %s does not have host %s paired", follow_dev, target_host)
+                    continue
+                if new_channel == cur_host:
+                    logger.info("EasySwitch action:  device %s is following lead, but is already on host %s?", cur_host)
+                    continue
+                logger.info("EasySwitch action:  device %s is following lead, switch it to %s", follow_dev.name, new_channel)
+                # All good, perform the switch!
+                host_setting.write(new_channel)
+
+        # Action returns nothing
+        return None
+
+    def data(self):
+        data = []
+        return {"EasySwitch": data}
+
+
 
 COMPONENTS = {
     "Rule": Rule,
@@ -1409,6 +1509,7 @@ COMPONENTS = {
     "Set": Set,
     "Execute": Execute,
     "Later": Later,
+    "EasySwitch": EasySwitch
 }
 
 

@@ -1318,6 +1318,44 @@ class ChangeHost(settings.Setting):
             return cls(choices=choices, read_skip_byte_count=1) if choices and len(choices) > 1 else None
 
 
+class ChangeHostCookie(settings.Settings):
+    name = "change-host-cookie"
+    label = _("Change Host Cookie")
+    description = "Stores cookies for every host, used by the EasySwitch feature" # TODO
+    persist = False # TODO
+    display = False # TODO No UI for this ...
+    feature = _F.CHANGE_HOST
+    rw_options = {"read_fnid": 0x20, "write_fnid": 0x30, "key_byte_count": 1}
+
+    # Unfortunately, this feature reads like a single value (all keys at once)
+    # but writes like a map (need to do one separate write per key)
+    # Use FeatureRWMap but override read
+    class rw_class(settings.FeatureRWMap):
+        def read(self, device):
+            return device.feature_request(self.feature, self.read_fnid)
+
+    def read(self, cached=True):
+        if cached and self._value is not None:
+            return self._value
+
+        if self._device.online:
+            reply = self._rw.read(self._device)
+            self._value = {key : reply[key] for key in self._validator.choices}
+            return self._value
+
+    class validator_class(settings_validator.MapRangeValidator):
+        @classmethod
+        def build(cls, setting_class, device):
+            infos = device.feature_request(_F.CHANGE_HOST)
+            assert infos, "Oops, host count cannot be retrieved!"
+            numHosts, currentHost = struct.unpack("!BB", infos[:2])
+            cookie_range = settings_validator.Range(min=0, max=0xFF, byte_count=1)
+            choices_map = {
+                common.NamedInt(h, _("Channel") + " " + str(h)): cookie_range
+                for h in range(0, numHosts)
+            }
+            return cls(choices_map) if choices_map else None
+
 _GESTURE2_GESTURES_LABELS = {
     GestureId.TAP_1_FINGER: (_("Single tap"), _("Performs a left click.")),
     GestureId.TAP_2_FINGER: (_("Single tap with two fingers"), _("Performs a right click.")),
@@ -4491,6 +4529,7 @@ SETTINGS: list[settings.Setting] = [
     Multiplatform,  # working
     DualPlatform,  # simple
     ChangeHost,  # working
+    ChangeHostCookie, # TBD
     Gesture2Gestures,  # working
     Gesture2Divert,
     Gesture2Params,  # working

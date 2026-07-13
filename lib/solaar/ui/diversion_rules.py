@@ -411,6 +411,7 @@ class ActionMenu:
                         (_("Set"), diversion.Set, [None, "", None]),
                         (_("Execute"), diversion.Execute, [""]),
                         (_("Later"), diversion.Later, [1]),
+                        (_("Easy-Switch"), diversion.EasySwitch, [1]),
                     ],
                 ],
             ],

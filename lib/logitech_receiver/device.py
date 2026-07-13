@@ -241,6 +241,10 @@ class Device:
             if device.online and (device.unitId == id or device.serial == id or device.name == id or device.codename == id):
                 return device
 
+    def find_setting(self, name):
+        # TODO This is very unpythonic...
+        return next((s for s in self.settings if s.name == name), None)
+
     @property
     def protocol(self):
         if not self._protocol:

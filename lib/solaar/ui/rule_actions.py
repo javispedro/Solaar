@@ -330,3 +330,6 @@ class ExecuteUI(ActionUI):
     @classmethod
     def right_label(cls, component):
         return " ".join([shlex_quote(a) for a in component.args])
+
+class EasySwitchUI(ActionUI):
+    CLASS = diversion.EasySwitch
